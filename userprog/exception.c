@@ -155,13 +155,15 @@ page_fault (struct intr_frame *f)
   user = (f->error_code & PF_U) != 0;
 
   success = false; /* default success is false. */
+  cur = thread_current ();
 
-   cur = thread_current ();
   if (user)
+  {
     esp = f->esp;
+    cur->esp = esp;
+  }
   else
     esp = cur->esp;
- printf("fault_addr is %x\n", fault_addr);
   if (fault_addr < PHYS_BASE)
   {
 
@@ -170,8 +172,10 @@ page_fault (struct intr_frame *f)
       success = spage_get_frame (ste);
     else
     {
-      if (fault_addr >= esp - 32)
+      if (fault_addr >= pg_round_down(esp) - 32)
+      {
         success = make_spage_for_stack_growth (&cur->spage_table, fault_addr);
+      }
     }
     if (success)
       return;

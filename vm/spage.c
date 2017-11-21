@@ -59,19 +59,7 @@ make_spage_for_stack_growth (struct hash *spage_table, void *fault_addr)
   ste->swap = false;
   
   hash_insert (spage_table, &ste->hash_elem);
-  
-  void *allocated_frame = frame_get_page (PAL_USER, ste->uaddr);
-  if (!allocated_frame)
-  {
-    spage_free_page (ste->uaddr, spage_table);
-    return false;
-  }
-  if (!install_page (ste->uaddr, allocated_frame, ste->writable))
-  {
-    spage_free_page (ste->uaddr, spage_table);
-    return false;
-  }
-  return true;
+  return spage_get_frame (ste);
 }
 
 void
