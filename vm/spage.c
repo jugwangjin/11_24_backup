@@ -23,7 +23,7 @@ unsigned
 spage_hash (const struct hash_elem *p_, void *aux UNUSED)
 {
   const struct spage_table_entry *s = hash_entry (p_, struct spage_table_entry, hash_elem);
-  return hash_int ((int)&s->uaddr);
+  return hash_bytes (&s->uaddr, sizeof s->uaddr);
 }
 
 bool
@@ -103,9 +103,7 @@ spage_get_frame (struct spage_table_entry *ste)
 {
   void *allocated_frame;
   bool success;
-  
-  allocated_frame = frame_get_page (PAL_USER, ste->uaddr);
-  
+  allocated_frame = frame_get_page (PAL_USER, ste);
   if (!allocated_frame)
     return false;
   success = false; 

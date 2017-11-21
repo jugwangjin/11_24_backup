@@ -576,7 +576,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       if (hash_insert (&t->spage_table, &ste->hash_elem) != NULL)
         return false;
-      /* Advance. */
+      
+/* Advance. */
       ofs += page_read_bytes; 
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;

@@ -33,12 +33,9 @@ void
   uint32_t *pd;
   
   frame = NULL;
-  
   if (! (flags & PAL_USER))
     return false;
-
   frame = palloc_get_page (flags);
-   
   if (frame != NULL)
   {
     frame_table_insert (frame, spage->uaddr);

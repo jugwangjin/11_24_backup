@@ -6,7 +6,7 @@
 #include "threads/thread.h"
 #include "vm/spage.h"
 #include "threads/vaddr.h"
-
+#include <hash.h>
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -157,14 +157,14 @@ page_fault (struct intr_frame *f)
   success = false; /* default success is false. */
 
    cur = thread_current ();
-
   if (user)
     esp = f->esp;
   else
     esp = cur->esp;
- 
+ printf("fault_addr is %x\n", fault_addr);
   if (fault_addr < PHYS_BASE)
   {
+
     ste = get_spage (&cur->spage_table, fault_addr);
     if (ste)
       success = spage_get_frame (ste);
@@ -173,30 +173,15 @@ page_fault (struct intr_frame *f)
       if (fault_addr >= esp - 32)
         success = make_spage_for_stack_growth (&cur->spage_table, fault_addr);
     }
-    if(!user)
-    {
-      f->eip = (void (*)(void))f->eax;
-      f->eax = 0x0; 
-    }
     if (success)
       return;
-    else
-    {
-      if (!user)
-      {
-        f->eax = 0xffffffff;
-        return;
-      }
-    } 
   }
-/*
   if (!user)
   { 
     f->eip = (void (*)(void))f->eax;
     f->eax = 0xfffffffff;
     return;
   }
-*/
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
