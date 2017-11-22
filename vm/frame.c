@@ -31,6 +31,7 @@ void
   struct frame_table_entry *entry;
   struct thread *thread_iter;
   uint32_t *pd;
+//  struct hash_iterator clock_hand;
   
   frame = NULL;
   if (! (flags & PAL_USER))

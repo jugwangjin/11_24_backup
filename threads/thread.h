@@ -108,6 +108,7 @@ struct thread
     /* file descriptors */
     struct list fd_table;               /* fd table for process. */
     int next_fd;                        /* next fd to allocate. init value is 2 */
+
     struct file* executing_file;        /* to deny and allow write executing file */
     struct semaphore exec_sema;         /* used for waiting child's process start. */
     bool exec_child_success;            /* child process exec's result */
@@ -119,6 +120,9 @@ struct thread
 
     struct hash spage_table;            /* spage_table */
     void *esp;                          /* stores esp if kernel page faults */
+
+    struct list mapid_table;            /* mmap */
+    int next_mapid;
   };
 
 /* If false (default), use round-robin scheduler.

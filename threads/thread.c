@@ -509,6 +509,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->executing_file = NULL;
   sema_init (&t->exec_sema, 0);
   #endif
+  list_init (&t->mapid_table);
+  t->next_mapid = 0;
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

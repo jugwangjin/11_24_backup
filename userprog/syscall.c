@@ -16,6 +16,8 @@
 static void syscall_handler (struct intr_frame *);
 int file_to_new_fd (struct file *file);
 struct fd_element* fd_to_fd_element (int fd);
+int addr_to_new_mapid (void *addr, int fd);
+struct mapid_element *mapid_to_mapid_element (int mapid);
 struct semaphore sys_sema;
 void
 syscall_init (void) 
@@ -71,6 +73,7 @@ syscall_handler (struct intr_frame *f)
   struct fd_element *fd_elem;
   struct file *file;
   struct thread *cur = thread_current ();
+
   /* Number of arguments that are used depends on syscall number.
      Max number of arguments is 3. */
   if(!is_user_vaddr ((f->esp))
@@ -88,6 +91,7 @@ syscall_handler (struct intr_frame *f)
      (maybe later we make all syscalls, we may need only one sema_up in the last*/
   //sema_down (&syscall_sema);
   //printf ("system call! syscall number is : %d\n", syscall_number);
+cur->esp = f->esp;
   switch(syscall_number)
   {
     case SYS_HALT:
@@ -242,6 +246,11 @@ syscall_handler (struct intr_frame *f)
         sema_up (&sys_sema);
         thread_exit ();
       }
+      if(get_user((*(uint8_t **)argument_2)) == -1)
+      {
+        sema_up (&sys_sema);
+        thread_exit ();
+      }
       f->eax = file_read (file, *(void **)argument_2, *(off_t *)argument_3);
       sema_up (&sys_sema);
       return;
@@ -356,6 +365,68 @@ syscall_handler (struct intr_frame *f)
       }
       sema_up (&sys_sema);
       return;
+    case SYS_MMAP:
+      argument_1 = (f->esp)+4;
+      argument_2 = (f->esp)+8;
+      if(!is_user_vaddr ((f->esp)+4) || !is_user_vaddr ((f->esp)+8))
+      {
+        sema_up (&sys_sema);
+        thread_exit ();
+      } 
+      if (*(int *)argument_1 == 0 || *(int *)argument_1 == 1)
+      {
+        f->eax = 0xffffffff;
+        sema_up (&sys_sema);
+        return;
+      }
+
+      fd_elem = fd_to_fd_element (*(int *)argument_1);
+      if(fd_elem == NULL)
+      {
+        f->eax = 0xffffffff;
+        sema_up (&sys_sema);
+        return;
+      }
+      file = file_reopen (fd_elem->file);
+      int new_fd = -1;
+      if(file != NULL)
+        new_fd = file_to_new_fd (file);
+      if (new_fd == -1)
+      {
+        f->eax = 0xffffffff;
+        sema_up (&sys_sema);
+        return;
+      }
+      fd_elem = fd_to_fd_element (new_fd);
+      if (!spage_mmap (fd_elem->file, *(void **)argument_2))
+        f->eax = 0xffffffff;
+      else
+        f->eax = addr_to_new_mapid (*(void **)argument_2, new_fd); 
+      sema_up (&sys_sema);
+      return;
+
+    case SYS_MUNMAP:
+      argument_1 = (f->esp)+4;
+      if(!is_user_vaddr ((f->esp)+4))
+      {
+        sema_up (&sys_sema);
+        thread_exit ();
+      } 
+      struct mapid_element *mapid_elem = mapid_to_mapid_element (*(int *)argument_1);
+      if (mapid_elem != NULL)
+      {
+        struct fd_element* fd_elem = fd_to_fd_element (mapid_elem->fd);
+        spage_munmap (mapid_elem->addr);
+        if(fd_elem != NULL)
+        {
+          file_close (fd_elem->file);
+          list_remove (&fd_elem->elem);
+          palloc_free_page (fd_elem);
+        } 
+        //spage_munmap (mapid_elem->addr, mapid_elem->pg_number);
+      }
+      sema_up (&sys_sema);
+      return;
   }
   /* treat all syscall region as a critical section */
 //  sema_up (&syscall_sema);
@@ -367,7 +438,7 @@ file_to_new_fd (struct file* file)
 {
   struct thread *cur = thread_current ();
   struct fd_element *fd_elem;
-  fd_elem = palloc_get_page (PAL_USER);
+  fd_elem = palloc_get_page (0);
   if(fd_elem == NULL)
     return -1;
   fd_elem->file = file;
@@ -394,3 +465,40 @@ fd_to_fd_element (int fd)
   }
   return NULL;
 }
+
+
+int
+addr_to_new_mapid (void *addr, int fd)
+{
+  struct thread *cur = thread_current ();
+  struct mapid_element *mapid_elem;
+  mapid_elem = palloc_get_page (0);
+  if(mapid_elem == NULL)
+    return -1;
+  mapid_elem->addr = addr;
+  mapid_elem->mapid = cur->next_mapid;
+  mapid_elem->fd = fd;
+//  mapid_elem->pg_number = pg_number;
+  cur->next_mapid += 1;
+  list_push_back (&(cur->mapid_table), &(mapid_elem->elem));
+  return mapid_elem->mapid;
+}
+
+struct mapid_element*
+mapid_to_mapid_element (int mapid)
+{
+  struct thread *cur = thread_current ();
+  struct list_elem *e;
+  struct mapid_element *mapid_elem;
+
+  for(e = list_begin (&(cur->mapid_table)); e != list_end (&(cur->mapid_table)); e = list_next (e))
+  {
+    mapid_elem = list_entry (e, struct mapid_element, elem);
+    if (mapid_elem -> mapid == mapid)
+    {
+      return mapid_elem;
+    }
+  }
+  return NULL;
+}
+

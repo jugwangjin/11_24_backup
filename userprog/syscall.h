@@ -10,4 +10,12 @@ struct fd_element
     struct list_elem elem;
   };
 
+struct mapid_element
+  {
+    int mapid;
+    int fd;
+//    int pg_number;
+    void *addr;
+    struct list_elem elem;
+  };
 #endif /* userprog/syscall.h */

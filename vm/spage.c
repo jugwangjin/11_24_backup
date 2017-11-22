@@ -65,24 +65,40 @@ make_spage_for_stack_growth (struct hash *spage_table, void *fault_addr)
 void
 spage_free_page (void *uaddr, struct hash *spage_table)
 {
-  struct spage_table_entry ste;
+  struct spage_table_entry search_ste;
+  struct spage_table_entry *ste;
   struct hash_elem *e;
-  
-  ste.uaddr = uaddr;
-  e = hash_delete (spage_table, &ste.hash_elem);
+  struct thread *t = thread_current ();
+  search_ste.uaddr = uaddr;
+  e = hash_delete (spage_table, &search_ste.hash_elem);
   if (e != NULL)
-    free (hash_entry (e, struct spage_table_entry, hash_elem));
+  {
+    ste = (hash_entry (e, struct spage_table_entry, hash_elem));
+    frame_free_page (pagedir_get_page (t->pagedir, uaddr));
+    pagedir_clear_page (t->pagedir, ste->uaddr);
+    free (ste);
+  }
 }
 
 bool
 load_file (struct spage_table_entry *ste, void *frame)
 {
-  if (file_read_at (ste->file_ptr, frame, ste->read_bytes, ste->ofs) != (int) ste->read_bytes)
-  {
-    frame_free_page (frame);
+/*  if(!ste->file)
     return false;
+  if(ste->mmap && ste->read_bytes == 0)
+    return false;*/
+  if(ste->file)
+  {
+    if (file_read_at (ste->file_ptr, frame, ste->read_bytes, ste->ofs) != (int) ste->read_bytes)
+    {
+      frame_free_page (frame);
+      pagedir_clear_page (thread_current ()->pagedir, ste->uaddr);
+      return false;
+    }
+    memset (frame + ste->read_bytes, 0, ste->zero_bytes);
   }
-  memset (frame + ste->read_bytes, 0, ste->zero_bytes);
+/*  else if (ste->mmap && ste->zero_bytes!=0)
+    memset (frame, 0, PGSIZE);*/
   return true;
 }
 
@@ -95,13 +111,89 @@ spage_get_frame (struct spage_table_entry *ste)
   if (!allocated_frame)
     return false;
   success = false; 
+  success = install_page (ste->uaddr, allocated_frame, ste->writable);
+  if (!success)
+    return success;
+//printf("before load_file\n");
   if (ste->file)
+  {
     success = load_file (ste, allocated_frame);
+//printf("loading file for %x is %d\n", ste->uaddr, success);
+  }
     
 
-  success = install_page (ste->uaddr, allocated_frame, ste->writable);  
+//  success = install_page (ste->uaddr, allocated_frame, ste->writable);  
   if (success == false)
     frame_free_page (allocated_frame);
   return success;
 }
-     
+    
+bool
+spage_mmap (struct file* file, void *addr)
+{
+  if ((int)addr % PGSIZE != 0 || addr == 0)
+    return false;
+
+  
+/* same as load_segment. */
+  size_t ofs = 0;
+  uint32_t read_bytes = file_length (file);
+  
+  struct spage_table_entry *ste;
+  struct thread *t = thread_current ();
+  
+  file_seek (file, ofs);
+  while (read_bytes > 0)
+  {
+    size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+    size_t page_zero_bytes = PGSIZE - page_read_bytes;
+  
+    ste = malloc (sizeof (struct spage_table_entry));
+    if (!ste)
+      return false;
+    ste->uaddr = addr;
+    ste->writable = true;
+    ste->mmap = true;
+    ste->file_ptr = file;
+    ste->file = true;
+    ste->swap = false;
+    ste->ofs = ofs;
+    ste->read_bytes = page_read_bytes;
+    ste->zero_bytes = page_zero_bytes;
+
+    if (hash_insert (&t->spage_table, &ste->hash_elem) != NULL)
+      return false;
+
+    ofs += page_read_bytes;
+    read_bytes -= page_read_bytes;
+    addr += PGSIZE;
+//    pg_number += 1;
+  }
+  return true;
+}
+
+void
+spage_munmap (void *addr)
+{
+  struct thread *t = thread_current ();
+//  for (i=0; i<pg_number; i++)
+//  {
+    bool dirty = pagedir_is_dirty(t->pagedir, addr);
+    if (dirty)
+    {
+      mmap_write_back (addr);
+    }
+    spage_free_page (addr, &t->spage_table);
+//  }
+} 
+
+void
+mmap_write_back (void *addr)
+{
+  struct thread *t = thread_current ();
+  struct spage_table_entry *ste = get_spage(&t->spage_table, addr);
+  if (ste == NULL)
+    return;
+  file_write_at (ste->file_ptr, pagedir_get_page(t->pagedir, addr), ste->read_bytes, ste->ofs);
+}
+
