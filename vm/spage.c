@@ -95,17 +95,14 @@ spage_free_page (void *uaddr, struct hash *spage_table)
   if (e != NULL)
   {
     ste = (hash_entry (e, struct spage_table_entry, hash_elem));
-    if (ste->file)
+    if (ste->mmap)
     {
       dirty = pagedir_is_dirty(t->pagedir, ste->uaddr);
       if (dirty)
         spage_write_back (ste);
-      if (ste->mmap)
-      {
-        mapid_elem = addr_to_mapid_element (ste->uaddr);
-        if (mapid_elem != NULL)
-          munmap_close (mapid_elem->fd);
-      }
+      mapid_elem = addr_to_mapid_element (ste->uaddr);
+      if (mapid_elem != NULL)
+        munmap_close (mapid_elem->fd);
     }
     frame_free_page (pagedir_get_page (t->pagedir, ste->uaddr));
     pagedir_clear_page (t->pagedir, ste->uaddr);
