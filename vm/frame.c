@@ -35,7 +35,7 @@ void
   
   frame = NULL;
   if (! (flags & PAL_USER))
-    return false;
+    return NULL;
   frame = palloc_get_page (flags);
   if (frame != NULL)
   {
@@ -44,6 +44,7 @@ void
   }
   else
   {
+
     if (clock_hand == NULL)
       hash_first (clock_hand, &frame_table);
     while (clock_hand != NULL)
@@ -70,7 +71,9 @@ void
       hash_first (clock_hand, &frame_table);
     }
     return frame;
+
   }
+
   return NULL;
 }
 

@@ -412,19 +412,10 @@ cur->esp = f->esp;
         sema_up (&sys_sema);
         thread_exit ();
       } 
-      struct mapid_element *mapid_elem = mapid_to_mapid_element (*(int *)argument_1);
-      if (mapid_elem != NULL)
-      {
-        struct fd_element* fd_elem = fd_to_fd_element (mapid_elem->fd);
-        spage_munmap (mapid_elem->addr);
-        if(fd_elem != NULL)
-        {
-          file_close (fd_elem->file);
-          list_remove (&fd_elem->elem);
-          palloc_free_page (fd_elem);
-        } 
-        //spage_munmap (mapid_elem->addr, mapid_elem->pg_number);
-      }
+
+      struct mapid_element *mapid_elem = mapid_to_mapid_element (* (int *)argument_1);      
+      spage_free_page (mapid_elem->addr, &thread_current ()->spage_table);
+
       sema_up (&sys_sema);
       return;
   }
@@ -500,5 +491,23 @@ mapid_to_mapid_element (int mapid)
     }
   }
   return NULL;
+}
+
+void
+munmap_close (int mapid)
+{
+  struct mapid_element *mapid_elem = mapid_to_mapid_element (mapid);
+      if (mapid_elem != NULL)
+      {
+        struct fd_element* fd_elem = fd_to_fd_element (mapid_elem->fd);
+        list_remove (&mapid_elem->elem);
+        palloc_free_page (&mapid_elem->elem); 
+        if(fd_elem != NULL)
+        {
+          file_close (fd_elem->file);
+          list_remove (&fd_elem->elem);
+          palloc_free_page (fd_elem);
+        } 
+      }
 }
 

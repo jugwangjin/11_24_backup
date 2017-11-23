@@ -18,4 +18,6 @@ struct mapid_element
     void *addr;
     struct list_elem elem;
   };
+
+void munmap_close (int mapid);
 #endif /* userprog/syscall.h */

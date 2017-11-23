@@ -4,6 +4,25 @@
 #include "userprog/exception.h"
 #include "threads/thread.h"
 #include "threads/palloc.h"
+#include "userprog/syscall.h"
+
+
+static struct mapid_element*
+addr_to_mapid_element (void *addr)
+{
+  struct thread *cur = thread_current ();
+  struct list_elem *e;
+  struct mapid_element *mapid_elem;
+  for(e = list_begin (&(cur->mapid_table)); e != list_end (&(cur->mapid_table)); e = list_next (e))
+  {
+    mapid_elem = list_entry (e, struct mapid_element, elem);
+    if (mapid_elem -> addr == addr)
+    {
+      return mapid_elem;
+    }
+  }
+  return NULL;
+}
 
 static bool
 install_page (void *upage, void *kpage, bool writable)
@@ -62,22 +81,38 @@ make_spage_for_stack_growth (struct hash *spage_table, void *fault_addr)
   return spage_get_frame (ste);
 }
 
-void
+bool
 spage_free_page (void *uaddr, struct hash *spage_table)
 {
   struct spage_table_entry search_ste;
   struct spage_table_entry *ste;
   struct hash_elem *e;
   struct thread *t = thread_current ();
+  bool dirty;
+  struct mapid_element *mapid_elem;
   search_ste.uaddr = uaddr;
   e = hash_delete (spage_table, &search_ste.hash_elem);
   if (e != NULL)
   {
     ste = (hash_entry (e, struct spage_table_entry, hash_elem));
-    frame_free_page (pagedir_get_page (t->pagedir, uaddr));
+    if (ste->file)
+    {
+      dirty = pagedir_is_dirty(t->pagedir, ste->uaddr);
+      if (dirty)
+        spage_write_back (ste);
+      if (ste->mmap)
+      {
+        mapid_elem = addr_to_mapid_element (ste->uaddr);
+        if (mapid_elem != NULL)
+          munmap_close (mapid_elem->fd);
+      }
+    }
+    frame_free_page (pagedir_get_page (t->pagedir, ste->uaddr));
     pagedir_clear_page (t->pagedir, ste->uaddr);
     free (ste);
+    return true;
   }
+  return false;
 }
 
 bool
@@ -173,27 +208,50 @@ spage_mmap (struct file* file, void *addr)
 }
 
 void
-spage_munmap (void *addr)
+spage_write_back (struct spage_table_entry *ste)
 {
   struct thread *t = thread_current ();
-//  for (i=0; i<pg_number; i++)
-//  {
-    bool dirty = pagedir_is_dirty(t->pagedir, addr);
-    if (dirty)
-    {
-      mmap_write_back (addr);
-    }
-    spage_free_page (addr, &t->spage_table);
-//  }
-} 
-
-void
-mmap_write_back (void *addr)
-{
-  struct thread *t = thread_current ();
-  struct spage_table_entry *ste = get_spage(&t->spage_table, addr);
   if (ste == NULL)
     return;
-  file_write_at (ste->file_ptr, pagedir_get_page(t->pagedir, addr), ste->read_bytes, ste->ofs);
-}
+  file_write_at (ste->file_ptr, pagedir_get_page(t->pagedir, ste->uaddr), ste->read_bytes, ste->ofs);
 
+}
+/* same as hash_destroy, but I could not find argument. so make it */
+void
+spage_destroy (struct hash *spage_table)
+{
+  struct hash_iterator iter;
+  struct hash_elem *e;
+  struct spage_table_entry *ste;
+  hash_first (&iter, spage_table);
+  e = hash_next (&iter);
+  while (e != NULL)
+  {
+    ste = hash_entry (e, struct spage_table_entry, hash_elem);
+    if (!ste)
+      return;
+    bool success = spage_free_page (ste->uaddr, spage_table);
+    if (!success)
+      return;
+    hash_first (&iter, spage_table);
+    e = hash_next (&iter);
+  }
+  //hash_destroy (spage_table, NULL);
+/*  size_t i;
+  for (i = 0; i < spage_table->bucket_cnt; i++)
+  {
+    struct list *bucket = &spage_table->buckets[i];
+      
+    while (!list_empty (bucket))
+    {
+      struct list_elem *list_elem = list_pop_front (bucket);
+      struct hash_elem *hash_elem = list_entry (list_elem, struct hash_elem, list_elem);
+      if (hash_elem != NULL)
+      
+        spage_free_page ( hash_entry (hash_elem, struct spage_table_entry, hash_elem)->uaddr, spage_table);
+    }
+    list_init (bucket);
+  }
+  spage_table->elem_cnt = 0;
+  free (spage_table->buckets); */
+}

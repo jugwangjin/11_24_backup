@@ -193,6 +193,8 @@ process_exit (void)
         palloc_free_page (cps);
     }
   }*/
+  /* destroy spage table */
+  spage_destroy (&cur->spage_table);
   e = list_begin (&cur->fd_table);
   while(!is_tail(e))
   {
